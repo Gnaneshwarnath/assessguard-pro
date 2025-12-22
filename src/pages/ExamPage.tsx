@@ -45,6 +45,7 @@ const ExamPage = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<string>>(new Set());
   const [timeLeft, setTimeLeft] = useState(1800);
+  const [examStarted, setExamStarted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [violations, setViolations] = useState(0);
   const [showViolationWarning, setShowViolationWarning] = useState(false);
@@ -243,12 +244,14 @@ const ExamPage = () => {
     try {
       await document.documentElement.requestFullscreen();
       setIsFullscreen(true);
+      setExamStarted(true);
     } catch (error) {
+      // Fullscreen may fail in iframes/sandboxed environments - still allow exam
       toast({
-        title: "Fullscreen failed",
-        description: "Could not enter fullscreen mode.",
-        variant: "destructive",
+        title: "Fullscreen unavailable",
+        description: "Starting exam without fullscreen mode. Please stay focused on this tab.",
       });
+      setExamStarted(true);
     }
   };
 
@@ -317,19 +320,19 @@ const ExamPage = () => {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  if (!isFullscreen) {
+  if (!examStarted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="glass-card p-8 max-w-lg text-center">
           <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/20 flex items-center justify-center mb-6">
             <Monitor className="w-8 h-8 text-primary" />
           </div>
-          <h2 className="text-2xl font-bold mb-4">Fullscreen Required</h2>
+          <h2 className="text-2xl font-bold mb-4">Ready to Start?</h2>
           <p className="text-muted-foreground mb-6">
-            This exam requires fullscreen mode for proctoring purposes. 
-            Please click the button below to enter fullscreen and start your exam.
+            This exam will attempt to enter fullscreen mode for proctoring purposes. 
+            Please click the button below to start your exam.
           </p>
-          <Button onClick={enterFullscreen} variant="gradient" size="lg">
+          <Button onClick={enterFullscreen} variant="gradient" size="lg" className="cursor-pointer">
             Enter Fullscreen & Start
           </Button>
         </div>

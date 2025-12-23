@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
   Code, 
@@ -13,11 +13,23 @@ import {
   Calendar,
   CheckCircle,
   AlertCircle,
-  Play
+  Play,
+  LogOut,
+  Loader2
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const StudentDashboard = () => {
+  const navigate = useNavigate();
+  const { user, loading, signOut, userRole } = useAuth();
   const [activeTab, setActiveTab] = useState("upcoming");
+
+  // Redirect to auth if not logged in or not a student
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/auth");
+    }
+  }, [user, loading, navigate]);
 
   const upcomingExams = [
     {
@@ -75,6 +87,26 @@ const StudentDashboard = () => {
     { icon: Brain, label: "Avg Score", value: "88%", color: "text-accent" },
   ];
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  // Get user display name from email
+  const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Student';
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -97,10 +129,13 @@ const StudentDashboard = () => {
                 <User className="w-4 h-4 text-primary-foreground" />
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-muted-foreground">Student</p>
+                <p className="text-sm font-medium">{displayName}</p>
+                <p className="text-xs text-muted-foreground capitalize">{userRole || 'Student'}</p>
               </div>
             </div>
+            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       </nav>
@@ -108,7 +143,7 @@ const StudentDashboard = () => {
       <main className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, John! 👋</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName}! 👋</h1>
           <p className="text-muted-foreground">Here's an overview of your exam schedule and progress.</p>
         </div>
 

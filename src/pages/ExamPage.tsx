@@ -11,12 +11,15 @@ import {
   Monitor,
   Eye,
   CheckCircle,
-  XCircle,
   Send,
   Play,
-  RotateCcw
+  RotateCcw,
+  Users,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useFaceDetection } from "@/hooks/useFaceDetection";
 
 interface Question {
   id: number;
@@ -37,6 +40,7 @@ const ExamPage = () => {
   const { examId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -54,6 +58,29 @@ const ExamPage = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("python");
   const [cameraActive, setCameraActive] = useState(false);
+
+  // Face detection hook
+  const handleFaceViolation = useCallback((reason: string) => {
+    handleViolation(reason);
+  }, []);
+
+  const { faceResult, isDetecting } = useFaceDetection(
+    videoRef,
+    cameraActive && examStarted,
+    handleFaceViolation
+  );
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to take the exam.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+    }
+  }, [user, authLoading, navigate, toast]);
 
   // Comprehensive exam data with many questions
   const sections: Section[] = [
@@ -666,7 +693,18 @@ const ExamPage = () => {
           <div className="mt-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-muted-foreground">Camera Preview</p>
-              <div className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-success animate-pulse' : 'bg-destructive'}`} />
+              <div className="flex items-center gap-2">
+                {isDetecting && (
+                  <div className={`text-xs flex items-center gap-1 ${
+                    faceResult.isMultipleFaces ? 'text-destructive' : 
+                    faceResult.isNoFace ? 'text-warning' : 'text-success'
+                  }`}>
+                    <Users className="w-3 h-3" />
+                    {faceResult.faceCount}
+                  </div>
+                )}
+                <div className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-success animate-pulse' : 'bg-destructive'}`} />
+              </div>
             </div>
             <div className="aspect-video rounded-lg overflow-hidden bg-secondary border border-border relative">
               <video
@@ -692,6 +730,36 @@ const ExamPage = () => {
                   </div>
                 </div>
               )}
+              {/* Face detection overlay */}
+              {cameraActive && faceResult.isMultipleFaces && (
+                <div className="absolute inset-0 border-4 border-destructive/50 animate-pulse flex items-end justify-center pb-2">
+                  <span className="bg-destructive text-destructive-foreground text-xs px-2 py-1 rounded">
+                    {faceResult.faceCount} faces detected!
+                  </span>
+                </div>
+              )}
+              {cameraActive && faceResult.isNoFace && isDetecting && (
+                <div className="absolute inset-0 border-4 border-warning/50 animate-pulse flex items-end justify-center pb-2">
+                  <span className="bg-warning text-warning-foreground text-xs px-2 py-1 rounded">
+                    No face detected
+                  </span>
+                </div>
+              )}
+            </div>
+            {/* Face detection legend */}
+            <div className="mt-2 text-xs space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-success" />
+                <span className="text-muted-foreground">1 face (OK)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-warning" />
+                <span className="text-muted-foreground">0 faces (Warning)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-destructive" />
+                <span className="text-muted-foreground">2+ faces (Violation)</span>
+              </div>
             </div>
           </div>
         </aside>

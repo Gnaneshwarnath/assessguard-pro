@@ -1,16 +1,21 @@
-import { useState } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Code, Eye, EyeOff, ArrowLeft, User, Shield } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Code, Eye, EyeOff, ArrowLeft, User, Shield, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { z } from "zod";
+
+const emailSchema = z.string().email("Please enter a valid email address");
+const passwordSchema = z.string().min(6, "Password must be at least 6 characters");
+const nameSchema = z.string().min(2, "Name must be at least 2 characters");
 
 const AuthPage = () => {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
+  const { user, loading, signUp, signIn, userRole } = useAuth();
+  
+  const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [userType, setUserType] = useState<"student" | "admin">("student");
   const [formData, setFormData] = useState({
@@ -19,41 +24,87 @@ const AuthPage = () => {
     name: "",
     confirmPassword: "",
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; name?: string; confirm?: string }>({});
+
+  // Redirect authenticated users
+  useEffect(() => {
+    if (user && !loading) {
+      if (userRole === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
+    }
+  }, [user, loading, userRole, navigate]);
+
+  const validateForm = () => {
+    const newErrors: { email?: string; password?: string; name?: string; confirm?: string } = {};
+    
+    try {
+      emailSchema.parse(formData.email);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        newErrors.email = e.errors[0]?.message;
+      }
+    }
+
+    try {
+      passwordSchema.parse(formData.password);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        newErrors.password = e.errors[0]?.message;
+      }
+    }
+
+    if (!isLogin) {
+      try {
+        nameSchema.parse(formData.name);
+      } catch (e) {
+        if (e instanceof z.ZodError) {
+          newErrors.name = e.errors[0]?.message;
+        }
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        newErrors.confirm = "Passwords do not match";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    
+    if (!validateForm()) return;
+    
+    setIsSubmitting(true);
 
-    // Simulate authentication
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (!isLogin && formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Password mismatch",
-        description: "Passwords do not match. Please try again.",
-        variant: "destructive",
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    toast({
-      title: isLogin ? "Welcome back!" : "Account created!",
-      description: isLogin 
-        ? "You have successfully logged in." 
-        : "Your account has been created successfully.",
-    });
-
-    // Navigate based on user type
-    if (userType === "admin") {
-      navigate("/admin");
+    if (isLogin) {
+      const { error } = await signIn(formData.email, formData.password);
+      if (!error) {
+        // Redirect handled by useEffect
+      }
     } else {
-      navigate("/dashboard");
+      const { error } = await signUp(formData.email, formData.password, formData.name, userType);
+      if (!error) {
+        setIsLogin(true);
+        setFormData({ email: "", password: "", name: "", confirmPassword: "" });
+      }
     }
 
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -76,33 +127,35 @@ const AuthPage = () => {
             </p>
           </div>
 
-          {/* User Type Selection */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <button
-              type="button"
-              onClick={() => setUserType("student")}
-              className={`p-4 rounded-xl border transition-all duration-200 ${
-                userType === "student"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-secondary/50 text-muted-foreground hover:border-primary/50"
-              }`}
-            >
-              <User className="w-6 h-6 mx-auto mb-2" />
-              <p className="text-sm font-medium">Student</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserType("admin")}
-              className={`p-4 rounded-xl border transition-all duration-200 ${
-                userType === "admin"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-secondary/50 text-muted-foreground hover:border-primary/50"
-              }`}
-            >
-              <Shield className="w-6 h-6 mx-auto mb-2" />
-              <p className="text-sm font-medium">Admin</p>
-            </button>
-          </div>
+          {/* User Type Selection - Only show for signup */}
+          {!isLogin && (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button
+                type="button"
+                onClick={() => setUserType("student")}
+                className={`p-4 rounded-xl border transition-all duration-200 ${
+                  userType === "student"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/50 text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                <User className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-sm font-medium">Student</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserType("admin")}
+                className={`p-4 rounded-xl border transition-all duration-200 ${
+                  userType === "admin"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-secondary/50 text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                <Shield className="w-6 h-6 mx-auto mb-2" />
+                <p className="text-sm font-medium">Admin</p>
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
@@ -115,6 +168,9 @@ const AuthPage = () => {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
                 />
+                {errors.name && (
+                  <p className="text-destructive text-xs">{errors.name}</p>
+                )}
               </div>
             )}
 
@@ -128,6 +184,9 @@ const AuthPage = () => {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
               />
+              {errors.email && (
+                <p className="text-destructive text-xs">{errors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -149,6 +208,9 @@ const AuthPage = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {errors.password && (
+                <p className="text-destructive text-xs">{errors.password}</p>
+              )}
             </div>
 
             {!isLogin && (
@@ -162,6 +224,9 @@ const AuthPage = () => {
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   required
                 />
+                {errors.confirm && (
+                  <p className="text-destructive text-xs">{errors.confirm}</p>
+                )}
               </div>
             )}
 
@@ -170,9 +235,16 @@ const AuthPage = () => {
               variant="gradient" 
               className="w-full" 
               size="lg"
-              disabled={isLoading}
+              disabled={isSubmitting}
             >
-              {isLoading ? "Please wait..." : (isLogin ? "Sign In" : "Create Account")}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {isLogin ? "Signing in..." : "Creating account..."}
+                </>
+              ) : (
+                isLogin ? "Sign In" : "Create Account"
+              )}
             </Button>
           </form>
 
@@ -180,7 +252,11 @@ const AuthPage = () => {
             <p className="text-muted-foreground">
               {isLogin ? "Don't have an account? " : "Already have an account? "}
               <button
-                onClick={() => setIsLogin(!isLogin)}
+                type="button"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setErrors({});
+                }}
                 className="text-primary hover:underline font-medium"
               >
                 {isLogin ? "Sign up" : "Sign in"}
